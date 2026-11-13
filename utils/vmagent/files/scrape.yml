@@ -1,0 +1,13 @@
+# vmagent scrape config (see /etc/config/vmagent for where it pushes to).
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # prometheus-node-exporter-lua, listens on loopback:9100 by default.
+  - job_name: node
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+
+  - job_name: vmagent
+    static_configs:
+      - targets: ["127.0.0.1:8429"]
