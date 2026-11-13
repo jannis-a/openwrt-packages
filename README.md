@@ -3,6 +3,12 @@
 Additional packages for OpenWrt, built with the official SDK and published
 as a signed apk feed on GitHub Pages.
 
+## Packages
+
+| Package | Description | Upstream | License |
+|---|---|---|---|
+| [vmagent](utils/vmagent) | Scrapes Prometheus targets and pushes the samples via remote write, with an on-disk buffer | [VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) | Apache-2.0 |
+
 ## Usage
 
 ```sh
