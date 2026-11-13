@@ -93,7 +93,7 @@ jobs:
           persist-credentials: false
       - uses: openwrt/gh-action-sdk@7fc2640243284ecc44f4a9c3f749a61746ee02cb # v11
         env:
-          ARCH: aarch64_cortex-a53-v25.12.6
+          ARCH: mediatek-filogic-v25.12.6
           FEEDNAME: jannis_a
           PACKAGES: ${{ needs.versions.outputs.packages }}
           V: s
