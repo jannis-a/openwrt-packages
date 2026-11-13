@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Like in release.yml.
+  SDK: mediatek-filogic-v25.12.6
+  FEED: jannis_a
+
 concurrency:
   group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -20,13 +25,16 @@ jobs:
         with:
           persist-credentials: false
       # Init scripts are sourced by /etc/rc.common, which uses START and
-      # USE_PROCD (SC2034); busybox sh has "local" (SC3043). shfmt runs in
-      # the SDK's init script check of build. find: passes without packages.
+      # USE_PROCD (SC2034); busybox sh has "local" (SC3043). Formatted like
+      # in openwrt/packages. find: passes without packages.
       - run: find . -path './*/*/files/*.init' -exec shellcheck --shell=sh --exclude=SC2034,SC3043 {} +
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq shfmt
+      - run: find . -path './*/*/files/*.init' -exec shfmt --diff -sr -s {} +
 
   # Every changed package needs a higher PKG_VERSION-PKG_RELEASE than on the
   # base branch, otherwise routers that have it installed never upgrade.
-  # Outputs the changed packages for build.
+  # Outputs the packages for build: the changed ones, or all of them when
+  # the pipeline (.github/) changed.
   versions:
     runs-on: ubuntu-26.04
     permissions:
@@ -79,10 +87,15 @@ jobs:
                 core.setFailed(`${makefile}: ${now} is not higher than ${before}, bump PKG_RELEASE`);
               }
             }
+            if (files.some(({ filename }) => filename.startsWith('.github/'))) {
+              const { data } = await github.rest.git.getTree({ owner, repo, tree_sha: head.sha, recursive: 'true' });
+              packages.splice(0, packages.length, ...data.tree
+                .map(({ path }) => path.match(/^[^.][^/]*\/([^/]+)\/Makefile$/)?.[1])
+                .filter(Boolean));
+            }
             core.setOutput('packages', packages.join(' '));
 
-  # Only the changed packages, with the SDK's download, hash and init script
-  # checks; skipped (which counts as passed) when no package changed.
+  # Skipped (which counts as passed) when there is nothing to build.
   build:
     needs: versions
     if: needs.versions.outputs.packages != ''
@@ -91,16 +104,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: openwrt/gh-action-sdk@7fc2640243284ecc44f4a9c3f749a61746ee02cb # v11
-        env:
-          ARCH: mediatek-filogic-v25.12.6
-          FEEDNAME: jannis_a
-          PACKAGES: ${{ needs.versions.outputs.packages }}
-          V: s
+      - uses: ./.github/actions/sdk
+        with:
+          sdk: ${{ env.SDK }}
+          feed: ${{ env.FEED }}
+          packages: ${{ needs.versions.outputs.packages }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: packages
           path: |
-            bin/packages/*/jannis_a/*.apk
+            bin/packages/*/${{ env.FEED }}/*.apk
             logs/

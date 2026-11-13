@@ -1,0 +1,94 @@
+# Builds packages of this feed in the OpenWrt SDK container. Replaces
+# openwrt/gh-action-sdk, which builds its own image, downloads the SDK again
+# on every run although the release images ship it extracted, and keeps
+# nothing between runs.
+#
+# Cached between runs: dl/ (sources), the host tools and ccache. The feeds
+# of a release SDK are pinned to commits, so the dependencies only change
+# with the SDK; the packages of this feed are always built from scratch.
+name: OpenWrt SDK
+description: Builds packages of this feed with the OpenWrt SDK
+
+inputs:
+  sdk:
+    description: Tag of ghcr.io/openwrt/sdk, for example mediatek-filogic-v25.12.6
+    required: true
+  feed:
+    description: Name of this feed in the SDK (letters, digits and _)
+    required: true
+  packages:
+    description: Packages to build, separated by spaces
+    required: true
+  private-key:
+    description: Signing key of the index; without it, no index is built
+    default: ''
+  save-cache:
+    description: Save the cache for later runs (only from main)
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - id: cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/sdk-cache
+        key: sdk-${{ inputs.sdk }}-${{ github.run_id }}
+        restore-keys: sdk-${{ inputs.sdk }}-
+
+    # The SDK runs as buildbot (1000:1000) in /builder.
+    - shell: bash
+      env:
+        SDK: ${{ inputs.sdk }}
+        FEED: ${{ inputs.feed }}
+        PACKAGES: ${{ inputs.packages }}
+        PRIVATE_KEY: ${{ inputs.private-key }}
+        CACHE: ${{ runner.temp }}/sdk-cache
+        BUILD: |
+          # shellcheck disable=SC2046,SC2086 # one word per package
+          # Only base and packages: the packages of this feed depend on
+          # nothing else, and every feed costs a clone.
+          grep -E ' (base|packages) ' feeds.conf.default |
+            sed 's,https://git.openwrt.org/[a-z]*/,https://github.com/openwrt/,' > feeds.conf
+          echo "src-link $FEED /feed" >> feeds.conf
+          ./scripts/feeds update -a
+          ./scripts/feeds install -p "$FEED" -f $PACKAGES
+
+          # The SDK selects all packages by default; some depend on kmods
+          # (openssl engines, for one), which makes it pack all ~900 kmods
+          # of the SDK: minutes for nothing. So only the packages of this
+          # feed, with their dependencies.
+          printf '# CONFIG_ALL is not set\n# CONFIG_ALL_NONSHARED is not set\n' > .config
+          make defconfig
+          awk -v feed="/$FEED/" '/^Source-Makefile: /{ ours = index($2, feed) } ours && /^Package: /{ print $2 }' \
+            tmp/.packageinfo > selected
+          sed 's/.*/CONFIG_PACKAGE_&=m/' selected >> .config
+          make defconfig
+
+          # Fails on a wrong or missing PKG_HASH too.
+          make $(printf 'package/%s/compile ' $PACKAGES) BUILD_LOG=1 CONFIG_CCACHE=y -j "$(nproc)" V=s
+          while read -r name; do ls bin/packages/*/"$FEED/$name"-[0-9]*.apk; done < selected
+
+          if [ -n "$PRIVATE_KEY" ]; then
+            echo "$PRIVATE_KEY" > private-key.pem
+            make package/index CONFIG_SIGNED_PACKAGES=y V=s
+          fi
+      run: |
+        mkdir -p "$CACHE"/{dl,ccache,staging_dir-hostpkg,build_dir-hostpkg} bin logs
+        sudo chown -R 1000:1000 "$CACHE" .
+        trap 'sudo chown -R "$(id -u):$(id -g)" "$CACHE" .' EXIT
+        docker run --rm --env FEED --env PACKAGES --env PRIVATE_KEY \
+          --volume "$PWD:/feed" \
+          --volume "$PWD/bin:/builder/bin" \
+          --volume "$PWD/logs:/builder/logs" \
+          --volume "$CACHE/dl:/builder/dl" \
+          --volume "$CACHE/ccache:/builder/.ccache" \
+          --volume "$CACHE/staging_dir-hostpkg:/builder/staging_dir/hostpkg" \
+          --volume "$CACHE/build_dir-hostpkg:/builder/build_dir/hostpkg" \
+          "ghcr.io/openwrt/sdk:$SDK" bash -euo pipefail -c "$BUILD"
+
+    - if: inputs.save-cache == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/sdk-cache
+        key: ${{ steps.cache.outputs.cache-primary-key }}
