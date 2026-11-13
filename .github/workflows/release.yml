@@ -22,13 +22,15 @@ concurrency:
 env:
   # SDK container (openwrt/sdk:<ARCH>) and the feed path for its release
   # branch and package architecture; change both together.
-  ARCH: aarch64_cortex-a53-v25.12.6
+  ARCH: mediatek-filogic-v25.12.6
   FEED_PATH: 25.12/aarch64_cortex-a53
   PUBLIC_KEY: keys/jannis-a.pem
 
 jobs:
   build:
     runs-on: ubuntu-26.04
+    outputs:
+      packages: ${{ steps.packages.outputs.names }}
     # The signing key is a secret of this environment, which only allows
     # deployments from main.
     environment: release
@@ -46,25 +48,34 @@ jobs:
           fi
         env:
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-      - uses: openwrt/gh-action-sdk@7fc2640243284ecc44f4a9c3f749a61746ee02cb # v11
+      # All packages of the feed by name: without PACKAGES the SDK would build
+      # everything it selects by default, kernel modules included.
+      - id: packages
+        run: echo "names=$(find . -path './[!.]*/*/Makefile' | cut -d/ -f3 | sort | xargs)" >> "$GITHUB_OUTPUT"
+      - if: steps.packages.outputs.names != ''
+        uses: openwrt/gh-action-sdk@7fc2640243284ecc44f4a9c3f749a61746ee02cb # v11
         env:
           FEEDNAME: jannis_a
+          PACKAGES: ${{ steps.packages.outputs.names }}
           INDEX: 1
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           V: s
       - name: Assemble site
+        if: steps.packages.outputs.names != ''
         run: |
           feed=bin/packages/${FEED_PATH#*/}/jannis_a
           mkdir -p "site/$FEED_PATH"
           cp "$feed"/*.apk "$feed/packages.adb" "$feed/index.json" "site/$FEED_PATH/"
           cp "$PUBLIC_KEY" site/
           find site -type f | sort
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      - if: steps.packages.outputs.names != ''
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
 
   deploy:
     needs: build
+    if: needs.build.outputs.packages != ''
     runs-on: ubuntu-26.04
     permissions:
       pages: write
