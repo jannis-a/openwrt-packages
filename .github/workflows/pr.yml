@@ -1,0 +1,106 @@
+# Checks of every pull request; all three jobs are required checks of main.
+name: pr
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Init scripts are sourced by /etc/rc.common, which uses START and
+      # USE_PROCD (SC2034); busybox sh has "local" (SC3043). shfmt runs in
+      # the SDK's init script check of build. find: passes without packages.
+      - run: find . -path './*/*/files/*.init' -exec shellcheck --shell=sh --exclude=SC2034,SC3043 {} +
+
+  # Every changed package needs a higher PKG_VERSION-PKG_RELEASE than on the
+  # base branch, otherwise routers that have it installed never upgrade.
+  # Outputs the changed packages for build.
+  versions:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      packages: ${{ steps.check.outputs.packages }}
+    steps:
+      - id: check
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { base, head } = context.payload.pull_request;
+
+            async function version(path, ref) {
+              try {
+                const { data } = await github.rest.repos.getContent({ owner, repo, path, ref });
+                const makefile = Buffer.from(data.content, 'base64').toString();
+                const value = (key) => makefile.match(new RegExp(`^${key}:=(.*)$`, 'm'))[1];
+                return `${value('PKG_VERSION')}-r${value('PKG_RELEASE')}`;
+              } catch (error) {
+                if (error.status === 404) return null;
+                throw error;
+              }
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number: context.issue.number,
+            });
+            // <category>/<package>/...
+            const makefiles = new Set(files
+              .map(({ filename }) => filename.split('/'))
+              .filter((parts) => parts.length > 2 && !parts[0].startsWith('.'))
+              .map(([category, pkg]) => `${category}/${pkg}/Makefile`)
+            );
+
+            const packages = [];
+            for (const makefile of makefiles) {
+              const now = await version(makefile, head.sha);
+              const before = await version(makefile, base.sha);
+              if (!now) continue; // deleted package, or no package
+              packages.push(makefile.split('/')[1]);
+              // Numeric-aware, like sort -V: 1.10.0 > 1.9.0, r10 > r9.
+              if (!before || now.localeCompare(before, 'en', { numeric: true }) > 0) {
+                core.info(`${makefile}: ${before ?? 'new'} -> ${now}`);
+              } else {
+                core.setFailed(`${makefile}: ${now} is not higher than ${before}, bump PKG_RELEASE`);
+              }
+            }
+            core.setOutput('packages', packages.join(' '));
+
+  # Only the changed packages, with the SDK's download, hash and init script
+  # checks; skipped (which counts as passed) when no package changed.
+  build:
+    needs: versions
+    if: needs.versions.outputs.packages != ''
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: openwrt/gh-action-sdk@7fc2640243284ecc44f4a9c3f749a61746ee02cb # v11
+        env:
+          ARCH: aarch64_cortex-a53-v25.12.6
+          FEEDNAME: jannis_a
+          PACKAGES: ${{ needs.versions.outputs.packages }}
+          V: s
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: packages
+          path: |
+            bin/packages/*/jannis_a/*.apk
+            logs/

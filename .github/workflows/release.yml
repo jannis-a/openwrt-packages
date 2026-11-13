@@ -1,0 +1,77 @@
+# Builds all packages after every merge to main, signs the index and
+# publishes the feed on GitHub Pages:
+#   https://jannis-a.github.io/openwrt-packages/<FEED_PATH>/packages.adb
+#   https://jannis-a.github.io/openwrt-packages/jannis-a.pem
+# All packages, not only the changed ones: the index covers exactly what one
+# run built, so no state carries over between runs.
+name: release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # SDK container (openwrt/sdk:<ARCH>) and the feed path for its release
+  # branch and package architecture; change both together.
+  ARCH: aarch64_cortex-a53-v25.12.6
+  FEED_PATH: 25.12/aarch64_cortex-a53
+  PUBLIC_KEY: keys/jannis-a.pem
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    # The signing key is a secret of this environment, which only allows
+    # deployments from main.
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The SDK would sign with any key it gets; the routers only trust the
+      # public key in the repo.
+      - name: Check signing key
+        run: |
+          if ! printf '%s\n' "$PRIVATE_KEY" | openssl ec -pubout 2>/dev/null | cmp -s - "$PUBLIC_KEY"; then
+            echo "::error::secret PRIVATE_KEY does not match $PUBLIC_KEY"
+            exit 1
+          fi
+        env:
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+      - uses: openwrt/gh-action-sdk@7fc2640243284ecc44f4a9c3f749a61746ee02cb # v11
+        env:
+          FEEDNAME: jannis_a
+          INDEX: 1
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          V: s
+      - name: Assemble site
+        run: |
+          feed=bin/packages/${FEED_PATH#*/}/jannis_a
+          mkdir -p "site/$FEED_PATH"
+          cp "$feed"/*.apk "$feed/packages.adb" "$feed/index.json" "site/$FEED_PATH/"
+          cp "$PUBLIC_KEY" site/
+          find site -type f | sort
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-26.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
