@@ -20,8 +20,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # SDK container (openwrt/sdk:<ARCH>) and the feed path for its release
-  # branch and package architecture; change both together.
+  # SDK container (openwrt/sdk:<ARCH>) of the router's target. FEED_PATH is
+  # the release branch and package architecture of that SDK; change both
+  # for a new release branch.
   ARCH: mediatek-filogic-v25.12.6
   FEED_PATH: 25.12/aarch64_cortex-a53
   PUBLIC_KEY: keys/jannis-a.pem
