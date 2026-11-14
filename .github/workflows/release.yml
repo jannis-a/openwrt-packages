@@ -20,10 +20,12 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # SDK container (openwrt/sdk:<ARCH>) of the router's target. FEED_PATH is
-  # the release branch and package architecture of that SDK; change both
-  # for a new release branch.
-  ARCH: mediatek-filogic-v25.12.6
+  # SDK container (ghcr.io/openwrt/sdk:<SDK>) of the router's target.
+  # FEED_PATH is the release branch and package architecture of that SDK;
+  # change both for a new release branch.
+  SDK: mediatek-filogic-v25.12.6
+  # Name of this feed in the SDK, and of its directory in bin/packages/.
+  FEED: jannis_a
   FEED_PATH: 25.12/aarch64_cortex-a53
   PUBLIC_KEY: keys/jannis-a.pem
 
@@ -49,22 +51,22 @@ jobs:
           fi
         env:
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-      # All packages of the feed by name: without PACKAGES the SDK would build
-      # everything it selects by default, kernel modules included.
+      # All packages of the feed, by directory name.
       - id: packages
         run: echo "names=$(find . -path './[!.]*/*/Makefile' | cut -d/ -f3 | sort | xargs)" >> "$GITHUB_OUTPUT"
+      # Saves the cache that pull requests start from.
       - if: steps.packages.outputs.names != ''
-        uses: openwrt/gh-action-sdk@7fc2640243284ecc44f4a9c3f749a61746ee02cb # v11
-        env:
-          FEEDNAME: jannis_a
-          PACKAGES: ${{ steps.packages.outputs.names }}
-          INDEX: 1
-          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-          V: s
+        uses: ./.github/actions/sdk
+        with:
+          sdk: ${{ env.SDK }}
+          feed: ${{ env.FEED }}
+          packages: ${{ steps.packages.outputs.names }}
+          private-key: ${{ secrets.PRIVATE_KEY }}
+          save-cache: true
       - name: Assemble site
         if: steps.packages.outputs.names != ''
         run: |
-          feed=bin/packages/${FEED_PATH#*/}/jannis_a
+          feed=bin/packages/${FEED_PATH#*/}/$FEED
           mkdir -p "site/$FEED_PATH"
           cp "$feed"/*.apk "$feed/packages.adb" "$feed/index.json" "site/$FEED_PATH/"
           cp "$PUBLIC_KEY" site/
