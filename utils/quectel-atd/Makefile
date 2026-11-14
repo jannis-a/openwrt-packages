@@ -5,6 +5,11 @@ PKG_VERSION:=2026.11.14
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-2.0
+# Runtime dependencies only: apk installs them on the router from the official
+# feeds. As DEPENDS the SDK would build them, and through them the kernel with
+# all its modules.
+EXTRA_DEPENDS:=lua, luasocket
+
 PKG_MAINTAINER:=Jannis Assenheimer <jannis.assenheimer@gmail.com>
 
 include $(INCLUDE_DIR)/package.mk
@@ -13,7 +18,6 @@ define Package/quectel-atd
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=Shared access to the AT port of Quectel 5G modules
-  DEPENDS:=+lua +luasocket
   PKGARCH:=all
 endef
 
