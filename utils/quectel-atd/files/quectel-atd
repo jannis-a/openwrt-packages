@@ -1,0 +1,170 @@
+#!/usr/bin/lua
+-- quectel-atd: shares the AT port of a Quectel 5G module (RGMII, TCP 1555)
+-- between local clients over a unix socket.
+--
+-- The modem accepts one TCP client at a time (a new one closes the old one),
+-- answers only 1-2 s after connect (RGMII_ATC_READY banner) and drops
+-- connections idle for 60-120 s. This daemon keeps one connection open,
+-- sends a keepalive AT and runs the clients' commands one after another.
+--
+-- Client protocol: connect to SOCKET, send one command line, read the
+-- modem's output until the daemon closes the connection.
+--
+-- Modem wire format, both directions: <type:1> <length:2, big endian> <payload>
+--   request type 0xa4 (command + CRLF); response 0xa0 = AT output,
+--   0xe0 = RGMII_ATC_READY banner.
+
+local socket = require("socket")
+local unix = require("socket.unix")
+
+local HOST, PORT = "192.168.225.1", 1555
+local SOCKET = "/var/run/quectel-at.sock"
+local BANNER_TIMEOUT = 5
+local CMD_TIMEOUT = 180 -- AT+COPS=? scans up to 180 s
+local KEEPALIVE = 30
+local RETRY = 5
+
+local function log(msg)
+  io.stderr:write(msg, "\n")
+end
+
+local modem       -- connected TCP socket, nil while disconnected
+local rbuf = ""   -- bytes from the modem not yet parsed into frames
+local queue = {}  -- requests waiting: { client = sock, cmd = string }
+local current     -- request in flight, plus out = output, deadline
+local clients = {} -- client sock -> partial command line, until queued
+local last_activity = 0
+local next_connect = 0
+
+local function reply(req, out)
+  if req.client then
+    req.client:settimeout(1)
+    req.client:send(out)
+    req.client:close()
+  end
+end
+
+local function disconnect(reason)
+  log("modem: " .. reason)
+  modem:close()
+  modem, rbuf = nil, ""
+  next_connect = socket.gettime() + RETRY
+  if current then reply(current, "ERROR: " .. reason .. "\r\n") end
+  for _, req in ipairs(queue) do reply(req, "ERROR: " .. reason .. "\r\n") end
+  current, queue = nil, {}
+end
+
+local function connect()
+  local sock = socket.tcp()
+  sock:settimeout(BANNER_TIMEOUT)
+  local ok, err = sock:connect(HOST, PORT)
+  if ok then
+    local hdr
+    hdr, err = sock:receive(3)
+    if hdr and hdr:byte(1) == 0xe0 then
+      local len = hdr:byte(2) * 256 + hdr:byte(3)
+      if len == 0 or sock:receive(len) then
+        sock:settimeout(0)
+        modem, last_activity = sock, socket.gettime()
+        log("modem: connected")
+        return
+      end
+    end
+    err = err or "no banner"
+  end
+  sock:close()
+  log("modem: connect failed: " .. err)
+  next_connect = socket.gettime() + RETRY
+end
+
+local function start(req)
+  local cmd = req.cmd .. "\r\n"
+  local len = #cmd
+  modem:settimeout(1)
+  -- One send: the modem drops frames split across TCP segments.
+  local ok, err = modem:send(string.char(0xa4, math.floor(len / 256), len % 256) .. cmd)
+  modem:settimeout(0)
+  current = req
+  req.out, req.deadline = "", socket.gettime() + CMD_TIMEOUT
+  if not ok then disconnect("send: " .. err) end
+end
+
+local function read_modem()
+  local data, err, partial = modem:receive(4096)
+  rbuf = rbuf .. (data or partial)
+  while #rbuf >= 3 do
+    local len = rbuf:byte(2) * 256 + rbuf:byte(3)
+    if #rbuf < 3 + len then break end
+    local ftype, payload = rbuf:byte(1), rbuf:sub(4, 3 + len)
+    rbuf = rbuf:sub(4 + len)
+    if ftype == 0xa0 and current then
+      current.out = current.out .. payload
+      if current.out:find("\r\nOK\r\n$") or current.out:find("ERROR[^\r\n]*\r\n$") then
+        reply(current, current.out)
+        current, last_activity = nil, socket.gettime()
+      end
+    end
+  end
+  if err == "closed" then disconnect("closed") end
+end
+
+local function read_client(c)
+  local data, err, partial = c:receive(4096)
+  local buf = clients[c] .. (data or partial)
+  local line = buf:match("^([^\n]*)\n")
+  if line then
+    clients[c] = nil
+    line = line:gsub("\r$", "")
+    if line == "" then
+      c:close()
+    elseif modem then
+      queue[#queue + 1] = { client = c, cmd = line }
+    else
+      reply({ client = c }, "ERROR: modem not connected\r\n")
+    end
+  elseif err == "closed" then
+    clients[c] = nil
+    c:close()
+  else
+    clients[c] = buf
+  end
+end
+
+os.remove(SOCKET)
+local server = unix()
+assert(server:bind(SOCKET))
+assert(server:listen(8))
+server:settimeout(0)
+
+while true do
+  local now = socket.gettime()
+  if not modem and now >= next_connect then connect() end
+  if modem and current and now >= current.deadline then
+    disconnect("timeout: " .. current.cmd)
+  end
+  if modem and not current then
+    if #queue > 0 then
+      start(table.remove(queue, 1))
+    elseif now - last_activity >= KEEPALIVE then
+      start({ cmd = "AT" })
+    end
+  end
+
+  local watch = { server }
+  if modem then watch[#watch + 1] = modem end
+  for c in pairs(clients) do watch[#watch + 1] = c end
+  local readable = socket.select(watch, nil, 1)
+  for _, s in ipairs(readable) do
+    if s == server then
+      local c = server:accept()
+      if c then
+        c:settimeout(0)
+        clients[c] = ""
+      end
+    elseif s == modem then
+      read_modem()
+    elseif clients[s] then
+      read_client(s)
+    end
+  end
+end

@@ -7,6 +7,7 @@ as a signed apk feed on GitHub Pages.
 
 | Package | Description | Upstream | License |
 |---|---|---|---|
+| [quectel-atd](utils/quectel-atd) | Shares the RGMII AT port of a Quectel 5G module between local clients over a unix socket, with the `quectel-at` CLI | - | GPL-2.0 |
 | [vmagent](utils/vmagent) | Scrapes Prometheus targets and pushes the samples via remote write, with an on-disk buffer | [VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) | Apache-2.0 |
 
 ## Usage
