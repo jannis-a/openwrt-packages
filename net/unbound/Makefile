@@ -33,8 +33,9 @@ PKG_BUILD_PARALLEL:=1
 PKG_FIXUP:=autoreconf
 PKG_INSTALL:=1
 
-# dnstap needs protoc and protoc-gen-c on the build host.
-PKG_BUILD_DEPENDS:=protobuf-c/host
+# dnstap needs protoc and protoc-gen-c on the build host. configure always
+# looks for expat, which only the unbound-anchor package (not built) links.
+PKG_BUILD_DEPENDS:=protobuf-c/host expat
 
 PKG_CONFIG_DEPENDS:=CONFIG_PACKAGE_libunbound_dnscrypt \
 	CONFIG_PACKAGE_libunbound_ipset \
