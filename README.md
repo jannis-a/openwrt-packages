@@ -7,6 +7,7 @@ as a signed apk feed on GitHub Pages.
 
 | Package | Description | Upstream | License |
 |---|---|---|---|
+| [prometheus-node-exporter-lua-client_traffic](utils/prometheus-node-exporter-lua-client_traffic) | Collector for prometheus-node-exporter-lua: bytes and packets per client MAC between br-lan and the router, counted by an nftables table that fw4 loads | - | GPL-2.0 |
 | [vmagent](utils/vmagent) | Scrapes Prometheus targets and pushes the samples via remote write, with an on-disk buffer | [VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) | Apache-2.0 |
 
 ## Usage
