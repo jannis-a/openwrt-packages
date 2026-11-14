@@ -5,11 +5,6 @@ PKG_VERSION:=2026.11.14
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-2.0
-# Runtime dependencies only: apk installs them on the router from the official
-# feeds. As DEPENDS the SDK would build them, and through them the kernel with
-# all its modules.
-EXTRA_DEPENDS:=prometheus-node-exporter-lua, quectel-atd
-
 PKG_MAINTAINER:=Jannis Assenheimer <jannis.assenheimer@gmail.com>
 
 include $(INCLUDE_DIR)/package.mk
@@ -19,6 +14,10 @@ define Package/prometheus-node-exporter-lua-quectel
   CATEGORY:=Utilities
   TITLE:=Prometheus node exporter (quectel collector)
   PKGARCH:=all
+  # Runtime dependencies only, installed by apk from the official feeds; as
+  # DEPENDS the SDK would build them, and through them the kernel with all its
+  # modules. apk needs a version constraint on each.
+  EXTRA_DEPENDS:=prometheus-node-exporter-lua (>=0), quectel-atd (>=0)
 endef
 
 define Package/prometheus-node-exporter-lua-quectel/description
