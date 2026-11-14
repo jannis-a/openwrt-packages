@@ -1,0 +1,50 @@
+# Traffic per client MAC between the clients of br-lan and the router
+# (internet, routed traffic between VLANs, the router's own services; not
+# traffic between clients of the same VLAN), read by the client_traffic
+# collector. List more bridges in both chains if their clients should count.
+#
+# fw4 includes this file after its own table on every reload, through the
+# symlink /usr/share/nftables.d/ruleset-post/client-traffic.nft. Not *.nft:
+# fw4 would also include it inside table inet fw4. The sets are only
+# declared, so their elements and counters stay; the chains are flushed and
+# refilled. Apply changes with fw4 reload.
+
+table bridge client_traffic {
+	# Sent by the client.
+	set tx {
+		type ether_addr
+		flags dynamic
+		counter
+		size 1024
+	}
+
+	# Received by the client.
+	set rx {
+		type ether_addr
+		flags dynamic
+		counter
+		size 1024
+	}
+
+	chain input {
+		type filter hook input priority 0; policy accept;
+	}
+
+	chain output {
+		type filter hook output priority 0; policy accept;
+	}
+}
+
+flush chain bridge client_traffic input
+flush chain bridge client_traffic output
+
+table bridge client_traffic {
+	# ibrname/obrname need kmod-nft-bridge; without them br-wan would count too.
+	chain input {
+		meta ibrname "br-lan" update @tx { ether saddr }
+	}
+
+	chain output {
+		meta obrname "br-lan" update @rx { ether daddr }
+	}
+}
