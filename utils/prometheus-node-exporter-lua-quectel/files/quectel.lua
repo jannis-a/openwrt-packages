@@ -5,9 +5,23 @@ local unix = require("socket.unix")
 local SOCKET = "/var/run/quectel-at.sock"
 
 -- All queries chained into one command: one round trip instead of ~300 ms each.
-local QUERY = 'AT+QENG="servingcell";+QCAINFO;+QENG="neighbourcell";+QRSRP;+QRSRQ;+QSINR;'
-  .. '+QNWCFG="lte_csi";+QNWCFG="nr5g_csi";+QNWCFG="lte_ambr";+QNWCFG="nr5g_ambr";'
-  .. '+COPS?;+CEREG?;+C5GREG?;+QNETRC?;+QTEMP'
+local QUERY = "AT" .. table.concat({
+  '+QENG="servingcell"',
+  "+QCAINFO",
+  '+QENG="neighbourcell"',
+  "+QRSRP",
+  "+QRSRQ",
+  "+QSINR",
+  '+QNWCFG="lte_csi"',
+  '+QNWCFG="nr5g_csi"',
+  '+QNWCFG="lte_ambr"',
+  '+QNWCFG="nr5g_ambr"',
+  "+COPS?",
+  "+CEREG?",
+  "+C5GREG?",
+  "+QNETRC?",
+  "+QTEMP",
+}, ";")
 
 local function at()
   local sock = unix()
