@@ -8,5 +8,25 @@
   ],
   enabledManagers: [
     'github-actions',
+    'custom.regex',
+  ],
+  customManagers: [
+    {
+      // vmagent is repackaged from the VictoriaMetrics release tarball:
+      // PKG_VERSION, PKG_RELEASE (reset to 1) and PKG_HASH, the hash taken
+      // from the release's checksum file.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^utils/vmagent/Makefile$/',
+      ],
+      matchStrings: [
+        'PKG_VERSION:=(?<version>\\S+)\\nPKG_RELEASE:=\\d+\\nPKG_HASH:=(?<currentDigest>[0-9a-f]{64})',
+      ],
+      depNameTemplate: 'VictoriaMetrics/VictoriaMetrics',
+      datasourceTemplate: 'github-release-attachments',
+      // Release tags carry a v, PKG_VERSION does not.
+      currentValueTemplate: 'v{{{version}}}',
+      autoReplaceStringTemplate: "PKG_VERSION:={{{replace '^v' '' newValue}}}\\nPKG_RELEASE:=1\\nPKG_HASH:={{{newDigest}}}",
+    },
   ],
 }
