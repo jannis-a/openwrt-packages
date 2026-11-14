@@ -8,6 +8,8 @@ as a signed apk feed on GitHub Pages.
 | Package | Description | Upstream | License |
 |---|---|---|---|
 | [prometheus-node-exporter-lua-client_traffic](utils/prometheus-node-exporter-lua-client_traffic) | Collector for prometheus-node-exporter-lua: bytes and packets per client MAC between br-lan and the router, counted by an nftables table that fw4 loads | - | GPL-2.0 |
+| [prometheus-node-exporter-lua-quectel](utils/prometheus-node-exporter-lua-quectel) | Collector for prometheus-node-exporter-lua: signal per carrier and antenna path, cells, network mode and temperatures of a Quectel 5G module, via quectel-atd | - | GPL-2.0 |
+| [quectel-atd](utils/quectel-atd) | Shares the RGMII AT port of a Quectel 5G module between local clients over a unix socket, with the `quectel-at` CLI | - | GPL-2.0 |
 | [vmagent](utils/vmagent) | Scrapes Prometheus targets and pushes the samples via remote write, with an on-disk buffer | [VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) | Apache-2.0 |
 
 ## Usage

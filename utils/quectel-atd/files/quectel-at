@@ -1,0 +1,50 @@
+#!/usr/bin/lua
+-- Runs one AT command through quectel-atd and prints the modem's output.
+--
+--   usage: quectel-at <AT command>
+--   e.g.:  quectel-at AT+QENG="servingcell"
+--
+-- The shell strips the quotes, so string parameters are re-quoted: everything
+-- after "=" except numbers/IPs/band lists (digits . : -), MAC addresses and "?".
+-- A command that still contains quotes (passed in single quotes) is sent as is.
+-- Exits 1 unless the modem answers OK.
+
+local unix = require("socket.unix")
+
+local SOCKET = "/var/run/quectel-at.sock"
+
+local cmd = arg[1]
+if #arg ~= 1 or cmd == "" then
+  io.stderr:write("usage: quectel-at <AT command>\n")
+  os.exit(1)
+end
+
+local function quote(v)
+  if v == "" or v == "?" or v:match("^[%d.:-]+$")
+      or v:match("^%x%x:%x%x:%x%x:%x%x:%x%x:%x%x$") then
+    return v
+  end
+  return '"' .. v .. '"'
+end
+
+local head, params = cmd:match("^([^=]*)=(.*)$")
+if head and not cmd:find('"') then
+  local f = {}
+  for v in (params .. ","):gmatch("([^,]*),") do f[#f + 1] = quote(v) end
+  cmd = head .. "=" .. table.concat(f, ",")
+end
+
+local sock = unix()
+sock:settimeout(190) -- quectel-atd gives up after 180 s
+local ok, err = sock:connect(SOCKET)
+if not ok then
+  io.stderr:write("quectel-at: ", SOCKET, ": ", err, "\n")
+  os.exit(1)
+end
+sock:send(cmd .. "\n")
+local out, rerr, partial = sock:receive("*a")
+sock:close()
+out = out or partial
+for line in out:gmatch("[^\r\n]+") do print(line) end
+if rerr then io.stderr:write("quectel-at: ", rerr, "\n") end
+os.exit(out:find("\r\nOK\r\n$") and 0 or 1)
