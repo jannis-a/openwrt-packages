@@ -7,6 +7,7 @@ as a signed apk feed on GitHub Pages.
 
 | Package | Description | Upstream | License |
 |---|---|---|---|
+| [quectel-atd](utils/quectel-atd) | Shares the RGMII AT port of a Quectel 5G module between local clients over a unix socket, with the `quectel-at` CLI | - | GPL-2.0 |
 | [unbound](net/unbound) | Validating, recursive, caching DNS resolver; the packages feed's unbound, built with dnstap | [NLnet Labs](https://nlnetlabs.nl/projects/unbound/about/) | BSD-3-Clause |
 | [vmagent](utils/vmagent) | Scrapes Prometheus targets and pushes the samples via remote write, with an on-disk buffer | [VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics) | Apache-2.0 |
 
