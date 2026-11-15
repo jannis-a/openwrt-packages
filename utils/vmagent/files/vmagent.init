@@ -10,13 +10,12 @@ USE_PROCD=1
 PROG=/usr/bin/vmagent
 
 start_service() {
-	local enabled url auth_header auth_header_file listen scrape_config data_path max_disk_usage
+	local enabled url bearer_token_file listen scrape_config data_path max_disk_usage
 
 	config_load vmagent
 	config_get_bool enabled main enabled 0
 	config_get url main remote_write_url
-	config_get auth_header main auth_header
-	config_get auth_header_file main auth_header_file
+	config_get bearer_token_file main bearer_token_file
 	config_get listen main listen 127.0.0.1:8429
 	config_get scrape_config main scrape_config /etc/vmagent/scrape.yml
 	config_get data_path main data_path /var/lib/vmagent
@@ -37,9 +36,9 @@ start_service() {
 		-remoteWrite.url="$url" \
 		-remoteWrite.tmpDataPath="$data_path" \
 		-remoteWrite.maxDiskUsagePerURL="$max_disk_usage"
-	# The header goes in via the environment so the secret does not show up in ps.
-	if [ -n "$auth_header" ] && [ -n "$auth_header_file" ]; then
-		procd_set_param env remoteWrite_headers="$auth_header:$(cat "$auth_header_file")"
+	# vmagent reads the token from the file itself, so it does not show up in ps.
+	if [ -n "$bearer_token_file" ]; then
+		procd_append_param command -remoteWrite.bearerTokenFile="$bearer_token_file"
 	fi
 	procd_set_param respawn
 	procd_set_param stdout 1
