@@ -4,7 +4,7 @@ PKG_NAME:=vmagent
 # Renovate updates these three lines together (renovate.json5): new version,
 # release reset to 1, hash from the release's checksum file.
 PKG_VERSION:=1.156.0
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_HASH:=1a8e4ed55df2a59d5cd03056213f50d293d4fab029e38dd960597362d92cf176
 
 # The static vmagent-prod from the VictoriaMetrics vmutils release, not built
